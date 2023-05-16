@@ -1,12 +1,14 @@
 use std::fs::File;
-use std::io;
+use std::{env, io};
 use std::io::Read;
 
 mod code;
 
-fn main() -> Result<(), io::Error>{
+fn main() -> Result<(), io::Error> {
+    let args: Vec<String> = env::args().collect();
+
     let mut code = String::new();
-    File::open("code.sic")?.read_to_string(&mut code)?;
+    File::open(&args[1])?.read_to_string(&mut code)?;
 
     let mut code = code::Code::compile(&mut code);
 
