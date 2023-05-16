@@ -126,14 +126,22 @@ impl Code {
     }
 
     fn get_accumulator(&self) -> i16 {
-        match self.registers.get("A") {
-            Some(value) => value.clone(),
-            None => 0,
-        }
+        self.get_register("A")
     }
 
     fn set_accumulator(&mut self, value: i16) {
-        self.registers.insert("A".to_string(), value);
+        self.set_register("A", value);
+    }
+
+    fn set_register(&mut self, register: &str, value: i16) {
+        self.registers.insert(register.to_string(), value);
+    }
+
+    fn get_register(&self, register: &str) -> i16 {
+        match self.registers.get(register) {
+            Some(value) => value.clone(),
+            None => 0,
+        }
     }
 
     fn get_label_index(&self, label: &str) -> usize {
@@ -205,6 +213,57 @@ impl Code {
                         self.get_accumulator(),
                     );
                 }
+                "LDS" => {
+                    if operand_count != 1 {
+                        panic!("Expected {} operands, found {} at line {}", 1, operand_count, index);
+                    }
+
+                    self.set_register("S", self.get_value_of(&line.operands[0]));
+                }
+                "STS" => {
+                    if operand_count != 1 {
+                        panic!("Expected {} operands, found {} at line {}", 1, operand_count, index);
+                    }
+
+                    self.set_value_of(
+                        &line.operands[0],
+                        self.get_register("S"),
+                    );
+                }
+                "LDX" => {
+                    if operand_count != 1 {
+                        panic!("Expected {} operands, found {} at line {}", 1, operand_count, index);
+                    }
+
+                    self.set_register("X", self.get_value_of(&line.operands[0]));
+                }
+                "STX" => {
+                    if operand_count != 1 {
+                        panic!("Expected {} operands, found {} at line {}", 1, operand_count, index);
+                    }
+
+                    self.set_value_of(
+                        &line.operands[0],
+                        self.get_register("X"),
+                    );
+                }
+                "LDT" => {
+                    if operand_count != 1 {
+                        panic!("Expected {} operands, found {} at line {}", 1, operand_count, index);
+                    }
+
+                    self.set_register("T", self.get_value_of(&line.operands[0]));
+                }
+                "STT" => {
+                    if operand_count != 1 {
+                        panic!("Expected {} operands, found {} at line {}", 1, operand_count, index);
+                    }
+
+                    self.set_value_of(
+                        &line.operands[0],
+                        self.get_register("T"),
+                    );
+                }
                 "ADD" => {
                     if operand_count != 1 {
                         panic!("Expected {} operands, found {} at line {}", 1, operand_count, index);
@@ -239,6 +298,74 @@ impl Code {
 
                     self.set_accumulator(
                         self.get_accumulator() / self.get_value_of(&line.operands[0])
+                    );
+                }
+                "ADDR" => {
+                    if operand_count != 2 {
+                        panic!("Expected {} operands, found {} at line {}", 2, operand_count, index);
+                    }
+
+                    if let Operand::Memory(_) = &line.operands[0] {
+                        panic!("Operands must be registers only, line {}", index);
+                    }
+                    if let Operand::Immediate(_) = &line.operands[0] {
+                        panic!("Operands must be registers only, line {}", index);
+                    }
+
+                    self.set_value_of(
+                        &line.operands[0],
+                        self.get_value_of(&line.operands[0]) + self.get_value_of(&line.operands[1])
+                    );
+                }
+                "MULR" => {
+                    if operand_count != 2 {
+                        panic!("Expected {} operands, found {} at line {}", 2, operand_count, index);
+                    }
+
+                    if let Operand::Memory(_) = &line.operands[0] {
+                        panic!("Operands must be registers only, line {}", index);
+                    }
+                    if let Operand::Immediate(_) = &line.operands[0] {
+                        panic!("Operands must be registers only, line {}", index);
+                    }
+
+                    self.set_value_of(
+                        &line.operands[0],
+                        self.get_value_of(&line.operands[0]) * self.get_value_of(&line.operands[1])
+                    );
+                }
+                "DIVR" => {
+                    if operand_count != 2 {
+                        panic!("Expected {} operands, found {} at line {}", 2, operand_count, index);
+                    }
+
+                    if let Operand::Memory(_) = &line.operands[0] {
+                        panic!("Operands must be registers only, line {}", index);
+                    }
+                    if let Operand::Immediate(_) = &line.operands[0] {
+                        panic!("Operands must be registers only, line {}", index);
+                    }
+
+                    self.set_value_of(
+                        &line.operands[0],
+                        self.get_value_of(&line.operands[0]) / self.get_value_of(&line.operands[1])
+                    );
+                }
+                "SUBR" => {
+                    if operand_count != 2 {
+                        panic!("Expected {} operands, found {} at line {}", 2, operand_count, index);
+                    }
+
+                    if let Operand::Memory(_) = &line.operands[0] {
+                        panic!("Operands must be registers only, line {}", index);
+                    }
+                    if let Operand::Immediate(_) = &line.operands[0] {
+                        panic!("Operands must be registers only, line {}", index);
+                    }
+
+                    self.set_value_of(
+                        &line.operands[0],
+                        self.get_value_of(&line.operands[0]) - self.get_value_of(&line.operands[1])
                     );
                 }
                 "J" => {
