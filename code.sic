@@ -1,0 +1,4 @@
+        LDA     #5
+        STA     Q
+LOOP    ADD     Q
+        STA     Q
