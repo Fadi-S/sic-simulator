@@ -93,7 +93,7 @@ You must have cargo and rust installed on your PC
    ```
 3. Run program
    ```sh
-   cargo run
+   cargo run -- code.asm
    ```
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
@@ -103,9 +103,10 @@ You must have cargo and rust installed on your PC
 <!-- CONTRIBUTING -->
 ## Contributing
 
-Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
+Contributions are what make the open source community such an amazing place to learn, inspire, and create.
+Any contributions you make are **greatly appreciated**.
 
-If you have a suggestion that would make this better, please fork the repo and create a pull request. You can also simply open an issue with the tag "enhancement".
+If you have a suggestion that would make this better, please fork the repo and create a pull request. You can also simply open an issue with the tag "feature".
 Don't forget to give the project a star! Thanks again!
 
 1. Fork the Project
