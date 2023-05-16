@@ -47,6 +47,15 @@ pub struct Code {
     labels: HashMap<String, u32>,
     memory: HashMap<String, i16>,
     registers: HashMap<String, i16>,
+    compare: Compare,
+}
+
+#[derive(Debug, PartialEq)]
+enum Compare {
+    Equal,
+    Greater,
+    Less,
+    Undefined,
 }
 
 const REGISTERS: [&str; 3] = ["x", "t", "s"];
@@ -58,6 +67,7 @@ impl Code {
             labels: HashMap::new(),
             memory: HashMap::new(),
             registers: HashMap::new(),
+            compare: Compare::Undefined,
         }
     }
 
@@ -123,6 +133,13 @@ impl Code {
 
     fn set_accumulator(&mut self, value: i16) {
         self.registers.insert("A".to_string(), value);
+    }
+
+    fn get_label_index(&self, label: &str) -> usize {
+         *self.labels.get(label)
+                .expect(
+                    format!("Label '{}' does not exist", label).as_str()
+                ) as usize
     }
 
     fn get_value_of(&self, operand: &Operand) -> i16 {
@@ -229,10 +246,83 @@ impl Code {
                     }
 
                     if let Operand::Memory(label) = &line.operands[0] {
-                        index = *self.labels.get(label)
-                            .expect(
-                                format!("Label '{}' does not exist", label).as_str()
-                            ) as usize;
+                        index = self.get_label_index(label);
+                    }
+                }
+                "COMP" => {
+                    if operand_count != 1 {
+                        panic!("Expected {} operands, found {} at line {}", 1, operand_count, index);
+                    }
+                    if let Operand::Register(_name) = &line.operands[0] {
+                        panic!("COMP cannot be used with a register, use COMPR instead, line {}", index);
+                    }
+
+                    let operand = self.get_value_of(&line.operands[0]);
+                    let accumulator = self.get_accumulator();
+
+                    self.compare = match accumulator {
+                        acc if acc > operand => Compare::Greater,
+                        acc if acc < operand => Compare::Less,
+                        _ => Compare::Equal,
+                    }
+                }
+                "COMPR" => {
+                    if operand_count != 2 {
+                        panic!("Expected {} operands, found {} at line {}", 2, operand_count, index);
+                    }
+                    if let Operand::Memory(_name) = &line.operands[0] {
+                        panic!("COMPR is used with registers only, line {}", index);
+                    }
+                    if let Operand::Immediate(_name) = &line.operands[0] {
+                        panic!("COMPR is used with registers only, line {}", index);
+                    }
+
+                    let register1 = self.get_value_of(&line.operands[0]);
+                    let register2 = self.get_value_of(&line.operands[1]);
+
+                    self.compare = match register1 {
+                        reg if reg > register2 => Compare::Greater,
+                        reg if reg < register2 => Compare::Less,
+                        _ => Compare::Equal,
+                    }
+                }
+                "JEQ" => {
+                    if operand_count != 1 {
+                        panic!("Expected {} operands, found {} at line {}", 1, operand_count, index);
+                    }
+
+                    if self.compare != Compare::Equal {
+                        continue;
+                    }
+
+                    if let Operand::Memory(label) = &line.operands[0] {
+                        index = self.get_label_index(label);
+                    }
+                }
+                "JGT" => {
+                    if operand_count != 1 {
+                        panic!("Expected {} operands, found {} at line {}", 1, operand_count, index);
+                    }
+
+                    if self.compare != Compare::Greater {
+                        continue;
+                    }
+
+                    if let Operand::Memory(label) = &line.operands[0] {
+                        index = self.get_label_index(label);
+                    }
+                }
+                "JLT" => {
+                    if operand_count != 1 {
+                        panic!("Expected {} operands, found {} at line {}", 1, operand_count, index);
+                    }
+
+                    if self.compare != Compare::Less {
+                        continue;
+                    }
+
+                    if let Operand::Memory(label) = &line.operands[0] {
+                        index = self.get_label_index(label);
                     }
                 }
                 _ => (),

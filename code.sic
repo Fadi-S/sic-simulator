@@ -1,7 +1,6 @@
         LDA     #10
         STA     Q
-        ADD     Q
-        STA     FADI
-        J       LOOP
-        ADD     Q
-LOOP
+LOOP    ADD     Q
+        STA     Q
+        COMP    #20
+        JEQ     LOOP
