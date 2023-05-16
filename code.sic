@@ -1,4 +1,7 @@
         LDA     #5
         STA     Q
-LOOP    ADD     Q
-        STA     Q
+        ADD     Q
+        STA     FADI
+        J       LOOP
+        ADD     Q
+LOOP

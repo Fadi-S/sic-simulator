@@ -3,7 +3,7 @@ use std::fs::File;
 use std::io;
 use std::io::Read;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Line {
     label: String,
     operation: String,
@@ -22,7 +22,7 @@ impl Line {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum Operand {
     Register(String),
     Immediate(String),
@@ -71,7 +71,9 @@ impl Code {
                 value.parse::<i16>().unwrap()
             }
             Operand::Memory(name) => {
-                self.memory.get(name.as_str()).unwrap().clone()
+                self.memory.get(name.as_str()).expect(
+                    format!("No memory location with name {}", name).as_str()
+                ).clone()
             }
         }
     }
@@ -91,14 +93,34 @@ impl Code {
     }
 
     pub fn execute(&mut self) {
-        for line in &self.lines {
+        let mut index: usize = 0;
+        let length = self.lines.len();
+        while index < length {
+            let line = &self.lines[index].clone();
+            println!("{:?}", line);
+            index += 1;
+
             match line.operation.to_uppercase().as_str() {
                 "LDA" => {
                     self.registers
                         .insert("A".to_string(), self.get_value_of(&line.operands[0]));
                 }
                 "STA" => {
-                    self.set_value_of(&line.operands[0], self.registers.get("A").unwrap().clone());
+                    self.set_value_of(
+                        &line.operands[0],
+                        self.registers.get("A").unwrap().clone()
+                    );
+                }
+                "ADD" => {
+                    self.registers
+                        .insert("A".to_string(),
+                                self.get_value_of(&line.operands[0]) + self.registers.get("A").unwrap().clone()
+                        );
+                }
+                "J" => {
+                    if let Operand::Memory(label) = &line.operands[0] {
+                        index = *self.labels.get(label).expect(format!("Label '{}' does not exist", label).as_str()) as usize;
+                    }
                 }
                 _ => (),
             }
@@ -141,6 +163,13 @@ fn compile(filename: &str) -> Result<Code, io::Error> {
         let mut line = Line::new(index as u32);
 
         // println!("{:?}", words.clone().collect::<Vec<_>>());
+        if count == 1 {
+            line.label.push_str(words.next().unwrap());
+
+            code_obj.labels.insert(line.label.clone(), line.number);
+            continue;
+        }
+
         if count == 3 {
             line.label.push_str(words.next().unwrap());
 
@@ -182,5 +211,6 @@ fn compile(filename: &str) -> Result<Code, io::Error> {
         code_obj.lines.push(line);
     }
 
+    println!("{:?}", code_obj);
     Ok(code_obj)
 }
