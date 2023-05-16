@@ -1,4 +1,4 @@
-        LDA     #5
+        LDA     #10
         STA     Q
         ADD     Q
         STA     FADI
