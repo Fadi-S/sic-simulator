@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use cli_table::{format::Justify, Cell, Style, Table};
 
 #[derive(Debug, Clone)]
 struct Line {
@@ -181,7 +182,7 @@ impl Code {
         let length = self.lines.len();
         while index < length {
             let line = &self.lines[index].clone();
-            println!("{:?}", line);
+            // println!("{:?}", line);
             index += 1;
 
             let operand_count = line.operands.len();
@@ -331,6 +332,38 @@ impl Code {
     }
 
     pub fn print(&self) {
-        println!("{:?}", self);
+        let mut table = vec![];
+        for (register, value) in &self.registers {
+            table.push(vec![register.cell(), value.cell().justify(Justify::Right)]);
+        }
+
+        let table = table
+            .table()
+            .title(vec![
+                "Register".cell().bold(true),
+                "Value".cell().bold(true),
+            ])
+            .bold(true);
+
+        let table_display = table.display().unwrap();
+
+        println!("{}", table_display);
+
+        let mut table = vec![];
+        for (memory, value) in &self.memory{
+            table.push(vec![memory.cell(), value.cell().justify(Justify::Right)]);
+        }
+
+        let table = table
+            .table()
+            .title(vec![
+                "Memory Location".cell().bold(true),
+                "Value".cell().bold(true),
+            ])
+            .bold(true);
+
+        let table_display = table.display().unwrap();
+
+        println!("{}", table_display);
     }
 }
