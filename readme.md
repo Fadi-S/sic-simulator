@@ -93,7 +93,7 @@ You must have cargo and rust installed on your PC
    ```
 3. Run program
    ```sh
-   cargo run -- code.asm
+   cargo run -- examples/code.asm
    ```
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>

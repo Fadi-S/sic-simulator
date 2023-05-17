@@ -7,3 +7,4 @@ LOOP    ADD     Q
         STA     Q
         COMP    #20
         JEQ     LOOP
+        RMO     S,T

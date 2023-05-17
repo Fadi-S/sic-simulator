@@ -121,7 +121,7 @@ impl Compare {
     }
 }
 
-const REGISTERS: [&str; 4] = ["x", "t", "s", "a"];
+const REGISTERS: [&str; 7] = ["a", "x", "l", "b", "s", "t", "f"];
 
 impl Code {
     pub fn new() -> Self {
@@ -214,9 +214,47 @@ impl Code {
                     continue;
                 }
                 "WORD" => {
+                    let mut word: Vec<i16> = vec![];
+                    for operand in &line.operands {
+                        let value = match operand {
+                            Operand::Memory(value) => value,
+                            _ => panic!("Invalid value for WORD, line {}", index+1),
+                        };
+                        let value = value.parse::<i16>().expect(
+                            format!("Invalid value for WORD, line {}", index+1).as_str()
+                        );
+                        word.push(value);
+                    }
+
+                    let size = (&word).len();
+                    code_obj.memory.insert(
+                        line.label.clone(),
+                        MemoryType::Array(
+                            word,
+                            Size::Word(size),
+                        ));
                     continue;
                 }
                 "BYTE" => {
+                    let mut byte: Vec<i16> = vec![];
+                    for operand in &line.operands {
+                        let value = match operand {
+                            Operand::Memory(value) => value,
+                            _ => panic!("Invalid value for Byte, line {}", index+1),
+                        };
+                        let value = value.parse::<i16>().expect(
+                            format!("Invalid value for Byte, line {}", index+1).as_str()
+                        );
+                        byte.push(value);
+                    }
+
+                    let size = (&byte).len();
+                    code_obj.memory.insert(
+                        line.label.clone(),
+                        MemoryType::Array(
+                            byte,
+                            Size::Byte(size),
+                        ));
                     continue;
                 }
                 _ => ()
@@ -440,7 +478,7 @@ impl Code {
                     if let Operand::Register(reg1) = &line.operands[0] {
                         let value = self.get_register(reg1);
 
-                        if let Operand::Register(reg2) = &line.operands[0] {
+                        if let Operand::Register(reg2) = &line.operands[1] {
                             self.set_register(reg1, self.get_register(reg2));
 
                             self.set_register(reg2, value);
@@ -458,8 +496,18 @@ impl Code {
 
     pub fn print(&self) {
         let mut table = vec![];
-        for (register, value) in &self.registers {
-            table.push(vec![register.cell(), value.cell().justify(Justify::Right)]);
+        for register in REGISTERS {
+            let value = match &self.registers.get(register.to_uppercase().as_str()) {
+                None => String::new(),
+                Some(value) => (&value).to_string(),
+            };
+
+            table.push(
+                vec![
+                    register.to_uppercase().cell(),
+                    value.cell().justify(Justify::Right)
+                ]
+            );
         }
 
         let table = table
@@ -474,26 +522,14 @@ impl Code {
 
         println!("{}", table_display);
 
-        let mut table = vec![];
+        println!("Memory: ");
         for (memory, value) in &self.memory {
             let val = match value {
                 MemoryType::Integer(v) => v.to_string(),
                 MemoryType::Array(vec, _) => vec.iter().map(|&id| id.to_string() + ",").collect(),
             };
 
-            table.push(vec![memory.cell(), val.cell().justify(Justify::Right)]);
+            println!("{}: {}", memory, val);
         }
-
-        let table = table
-            .table()
-            .title(vec![
-                "Memory Location".cell().bold(true),
-                "Value".cell().bold(true),
-            ])
-            .bold(true);
-
-        let table_display = table.display().unwrap();
-
-        println!("{}", table_display);
     }
 }
