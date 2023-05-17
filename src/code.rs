@@ -1,19 +1,20 @@
 use std::collections::HashMap;
+use std::ops::{Add, Div, Mul, Sub};
 use cli_table::{format::Justify, Cell, Style, Table};
 
 #[derive(Debug, Clone)]
 struct Line {
     label: String,
-    operation: String,
+    operation: Operation,
     operands: Vec<Operand>,
-    number: u32,
+    number: usize,
 }
 
 impl Line {
-    pub fn new(number: u32) -> Self {
+    pub fn new(number: usize) -> Self {
         Self {
             label: String::new(),
-            operation: String::new(),
+            operation: Operation::None,
             operands: vec![],
             number,
         }
@@ -27,26 +28,77 @@ enum Operand {
     Memory(String),
 }
 
-// enum Operation {
-//     Lda(Operand),
-//     Sta(Operand),
-//
-//     Add(Operand),
-//     Sub(Operand),
-//     Div(Operand),
-//     Mul(Operand),
-//
-//     J(Operand),
-//     Comp(Operand),
-//     Jgt(Operand),
-//     Jlt(Operand),
-// }
+#[derive(Debug, Clone, PartialEq)]
+enum Operation {
+    Arithmetic(ArithmeticOperation),
+    ArithmeticWithOffset(ArithmeticOperation),
+    ArithmeticRegisters(ArithmeticOperation),
+    Branch(BranchOperation),
+    Compare,
+    CompareRegisters,
+    Load(String),
+    Store(String),
+    LoadWithOffset(String),
+    StoreWithOffset(String),
+    Exchange,
+    None,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum ArithmeticOperation {
+    ADD,
+    SUB,
+    MUL,
+    DIV,
+}
+
+impl ArithmeticOperation {
+    fn calculate<T: Add<Output=T> + Sub<Output=T> + Mul<Output=T> + Div<Output=T>>(&self, value1: T, value2: T) -> T {
+        match self {
+            ArithmeticOperation::ADD => value1 + value2,
+            ArithmeticOperation::SUB => value1 - value2,
+            ArithmeticOperation::MUL => value1 * value2,
+            ArithmeticOperation::DIV => value1 / value2,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum BranchOperation {
+    J,
+    JEQ,
+    JGT,
+    JLT,
+}
+
+impl BranchOperation {
+    fn should_branch(&self, compare: &Compare) -> bool {
+        match self {
+            BranchOperation::J => true,
+            BranchOperation::JEQ => compare == &Compare::Equal,
+            BranchOperation::JGT => compare == &Compare::Greater,
+            BranchOperation::JLT => compare == &Compare::Less,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+enum MemoryType {
+    Integer(i16),
+    Array(Vec<i16>, Size),
+}
+
+#[derive(Debug, Clone)]
+enum Size {
+    Byte(usize),
+    Word(usize),
+}
 
 #[derive(Debug)]
 pub struct Code {
     lines: Vec<Line>,
-    labels: HashMap<String, u32>,
-    memory: HashMap<String, i16>,
+    labels: HashMap<String, usize>,
+    memory: HashMap<String, MemoryType>,
     registers: HashMap<String, i16>,
     compare: Compare,
 }
@@ -59,7 +111,17 @@ enum Compare {
     Undefined,
 }
 
-const REGISTERS: [&str; 3] = ["x", "t", "s"];
+impl Compare {
+    fn from_values<T: PartialOrd>(value1: T, value2: T) -> Self {
+        match value1 {
+            val1 if val1 > value2 => Compare::Greater,
+            val1 if val1 < value2 => Compare::Less,
+            _ => Compare::Equal,
+        }
+    }
+}
+
+const REGISTERS: [&str; 4] = ["x", "t", "s", "a"];
 
 impl Code {
     pub fn new() -> Self {
@@ -87,7 +149,7 @@ impl Code {
             let mut words = line.split(" ");
 
             let count = words.clone().count();
-            let mut line = Line::new(index as u32);
+            let mut line = Line::new(index);
 
             if count == 3 || count == 1 {
                 line.label.push_str(words.next().unwrap());
@@ -95,9 +157,9 @@ impl Code {
             }
             if count == 1 { continue; }
 
-            line.operation = words.next().expect(
+            let operation = words.next().expect(
                 format!("Operation expected in line {}", index + 1).as_str()
-            ).to_string();
+            ).to_string().to_uppercase();
 
             let operands: &str = words.next().expect(
                 format!("Operand(s) expected in line {}", index + 1).as_str()
@@ -117,6 +179,96 @@ impl Code {
                 }
 
                 line.operands.push(operand);
+            }
+
+            let operands_count = line.operands.len();
+            match operation.as_str() {
+                "RESW" => {
+                    if let Operand::Memory(value) = &line.operands[0] {
+                        let size = value.parse::<usize>().expect(
+                            format!("'{}' is not a valid RESW value", value).as_str()
+                        );
+
+                        code_obj.memory.insert(
+                            line.label.clone(),
+                            MemoryType::Array(
+                                vec![1; size],
+                                Size::Word(size),
+                            ));
+                    }
+                    continue;
+                }
+                "RESB" => {
+                    if let Operand::Memory(value) = &line.operands[0] {
+                        let size = value.parse::<usize>().expect(
+                            format!("'{}' is not a valid RESB value", value).as_str()
+                        );
+
+                        code_obj.memory.insert(
+                            line.label.clone(),
+                            MemoryType::Array(
+                                vec![0; size],
+                                Size::Byte(size),
+                            ));
+                    }
+                    continue;
+                }
+                "WORD" => {
+                    continue;
+                }
+                "BYTE" => {
+                    continue;
+                }
+                _ => ()
+            }
+
+            if operands_count == 1 {
+                line.operation = match operation.as_str() {
+                    "ADD" => Operation::Arithmetic(ArithmeticOperation::ADD),
+                    "SUB" => Operation::Arithmetic(ArithmeticOperation::SUB),
+                    "DIV" => Operation::Arithmetic(ArithmeticOperation::DIV),
+                    "MUL" => Operation::Arithmetic(ArithmeticOperation::MUL),
+                    "J" => Operation::Branch(BranchOperation::J),
+                    "JEQ" => Operation::Branch(BranchOperation::JEQ),
+                    "JGT" => Operation::Branch(BranchOperation::JGT),
+                    "JLT" => Operation::Branch(BranchOperation::JLT),
+                    "COMP" => Operation::Compare,
+                    "LDA" => Operation::Load("A".to_string()),
+                    "LDS" => Operation::Load("S".to_string()),
+                    "LDT" => Operation::Load("T".to_string()),
+                    "LDX" => Operation::Load("X".to_string()),
+                    "STA" => Operation::Store("A".to_string()),
+                    "STS" => Operation::Store("S".to_string()),
+                    "STT" => Operation::Store("T".to_string()),
+                    "STX" => Operation::Store("X".to_string()),
+                    _ => Operation::None,
+                };
+            } else if operands_count == 2 {
+                line.operation = match operation.as_str() {
+                    "ADD" => Operation::ArithmeticWithOffset(ArithmeticOperation::ADD),
+                    "SUB" => Operation::ArithmeticWithOffset(ArithmeticOperation::SUB),
+                    "DIV" => Operation::ArithmeticWithOffset(ArithmeticOperation::DIV),
+                    "MUL" => Operation::ArithmeticWithOffset(ArithmeticOperation::MUL),
+                    "ADDR" => Operation::ArithmeticRegisters(ArithmeticOperation::ADD),
+                    "SUBR" => Operation::ArithmeticRegisters(ArithmeticOperation::SUB),
+                    "DIVR" => Operation::ArithmeticRegisters(ArithmeticOperation::DIV),
+                    "MULR" => Operation::ArithmeticRegisters(ArithmeticOperation::MUL),
+                    "COMPR" => Operation::CompareRegisters,
+                    "RMO" => Operation::Exchange,
+                    "LDA" => Operation::LoadWithOffset("A".to_string()),
+                    "LDS" => Operation::LoadWithOffset("S".to_string()),
+                    "LDT" => Operation::LoadWithOffset("T".to_string()),
+                    "LDX" => Operation::LoadWithOffset("X".to_string()),
+                    "STA" => Operation::StoreWithOffset("A".to_string()),
+                    "STS" => Operation::StoreWithOffset("S".to_string()),
+                    "STT" => Operation::StoreWithOffset("T".to_string()),
+                    "STX" => Operation::StoreWithOffset("X".to_string()),
+                    _ => Operation::None,
+                };
+            }
+
+            if line.operation == Operation::None {
+                panic!("Operation and number of operands are incompatible, line {}", index + 1);
             }
 
             code_obj.lines.push(line);
@@ -145,13 +297,13 @@ impl Code {
     }
 
     fn get_label_index(&self, label: &str) -> usize {
-         *self.labels.get(label)
-                .expect(
-                    format!("Label '{}' does not exist", label).as_str()
-                ) as usize
+        *self.labels.get(label)
+            .expect(
+                format!("Label '{}' does not exist", label).as_str()
+            ) as usize
     }
 
-    fn get_value_of(&self, operand: &Operand) -> i16 {
+    fn get_value_of(&self, operand: &Operand, offset: Option<usize>) -> i16 {
         match operand {
             Operand::Register(name) => {
                 self.registers.get(name.as_str()).expect(
@@ -164,14 +316,26 @@ impl Code {
                 )
             }
             Operand::Memory(name) => {
-                self.memory.get(name.as_str()).expect(
+                match self.memory.get(name.as_str()).expect(
                     format!("No memory location with name {}", name).as_str()
-                ).clone()
+                ) {
+                    MemoryType::Integer(val) => val.clone(),
+                    MemoryType::Array(vector, size) => {
+                        let offset = offset.unwrap_or(0);
+
+                        let s = match size {
+                            Size::Byte(_) => 1,
+                            Size::Word(_) => 3,
+                        };
+
+                        vector[offset / s]
+                    }
+                }
             }
         }
     }
 
-    fn set_value_of(&mut self, operand: &Operand, value: i16) {
+    fn set_value_of(&mut self, operand: &Operand, value: i16, offset: Option<usize>) {
         match operand {
             Operand::Register(name) => {
                 self.registers.insert(name.clone(), value);
@@ -180,7 +344,24 @@ impl Code {
                 panic!("Cannot save value to immediate");
             }
             Operand::Memory(name) => {
-                self.memory.insert(name.clone(), value);
+                match offset {
+                    None => {
+                        self.memory.insert(name.clone(), MemoryType::Integer(value));
+                    }
+                    Some(offset) => {
+                        let mem = self.memory.get_mut(name.clone().as_str())
+                            .expect(format!("Memory {} not found", name).as_str());
+
+                        if let MemoryType::Array(vec, size) = mem {
+                            let s = match size {
+                                Size::Byte(_) => 1,
+                                Size::Word(_) => 3,
+                            };
+
+                            vec[offset / s] = value;
+                        }
+                    }
+                };
             }
         }
     }
@@ -193,267 +374,84 @@ impl Code {
             // println!("{:?}", line);
             index += 1;
 
-            let operand_count = line.operands.len();
+            match &line.operation {
+                Operation::Arithmetic(operation) => {
+                    let accumulator = self.get_accumulator();
+                    let value = self.get_value_of(&line.operands[0], None);
 
-            match line.operation.to_uppercase().as_str() {
-                "LDA" => {
-                    if operand_count != 1 {
-                        panic!("Expected {} operands, found {} at line {}", 1, operand_count, index);
-                    }
-
-                    self.set_accumulator(self.get_value_of(&line.operands[0]));
+                    self.set_accumulator(operation.calculate(accumulator, value));
                 }
-                "STA" => {
-                    if operand_count != 1 {
-                        panic!("Expected {} operands, found {} at line {}", 1, operand_count, index);
-                    }
+                Operation::ArithmeticWithOffset(operation) => {
+                    let accumulator = self.get_accumulator();
+                    let value = self.get_value_of(&line.operands[0], Some(self.get_value_of(&line.operands[1], None) as usize));
 
-                    self.set_value_of(
-                        &line.operands[0],
-                        self.get_accumulator(),
-                    );
+                    self.set_accumulator(operation.calculate(accumulator, value));
                 }
-                "LDS" => {
-                    if operand_count != 1 {
-                        panic!("Expected {} operands, found {} at line {}", 1, operand_count, index);
-                    }
+                Operation::ArithmeticRegisters(operation) => {
+                    let register1 = self.get_value_of(&line.operands[0], None);
+                    let register2 = self.get_value_of(&line.operands[1], None);
 
-                    self.set_register("S", self.get_value_of(&line.operands[0]));
+                    if let Operand::Register(register) = &line.operands[1] {
+                        self.set_register(register, operation.calculate(register1, register2));
+                    }
                 }
-                "STS" => {
-                    if operand_count != 1 {
-                        panic!("Expected {} operands, found {} at line {}", 1, operand_count, index);
-                    }
-
-                    self.set_value_of(
-                        &line.operands[0],
-                        self.get_register("S"),
-                    );
-                }
-                "LDX" => {
-                    if operand_count != 1 {
-                        panic!("Expected {} operands, found {} at line {}", 1, operand_count, index);
-                    }
-
-                    self.set_register("X", self.get_value_of(&line.operands[0]));
-                }
-                "STX" => {
-                    if operand_count != 1 {
-                        panic!("Expected {} operands, found {} at line {}", 1, operand_count, index);
-                    }
-
-                    self.set_value_of(
-                        &line.operands[0],
-                        self.get_register("X"),
-                    );
-                }
-                "LDT" => {
-                    if operand_count != 1 {
-                        panic!("Expected {} operands, found {} at line {}", 1, operand_count, index);
-                    }
-
-                    self.set_register("T", self.get_value_of(&line.operands[0]));
-                }
-                "STT" => {
-                    if operand_count != 1 {
-                        panic!("Expected {} operands, found {} at line {}", 1, operand_count, index);
-                    }
-
-                    self.set_value_of(
-                        &line.operands[0],
-                        self.get_register("T"),
-                    );
-                }
-                "ADD" => {
-                    if operand_count != 1 {
-                        panic!("Expected {} operands, found {} at line {}", 1, operand_count, index);
-                    }
-
-                    self.set_accumulator(
-                        self.get_accumulator() + self.get_value_of(&line.operands[0])
-                    );
-                }
-                "SUB" => {
-                    if operand_count != 1 {
-                        panic!("Expected {} operands, found {} at line {}", 1, operand_count, index);
-                    }
-
-                    self.set_accumulator(
-                        self.get_accumulator() - self.get_value_of(&line.operands[0])
-                    );
-                }
-                "MUL" => {
-                    if operand_count != 1 {
-                        panic!("Expected {} operands, found {} at line {}", 1, operand_count, index);
-                    }
-
-                    self.set_accumulator(
-                        self.get_accumulator() * self.get_value_of(&line.operands[0])
-                    );
-                }
-                "DIV" => {
-                    if operand_count != 1 {
-                        panic!("Expected {} operands, found {} at line {}", 1, operand_count, index);
-                    }
-
-                    self.set_accumulator(
-                        self.get_accumulator() / self.get_value_of(&line.operands[0])
-                    );
-                }
-                "ADDR" => {
-                    if operand_count != 2 {
-                        panic!("Expected {} operands, found {} at line {}", 2, operand_count, index);
-                    }
-
-                    if let Operand::Memory(_) = &line.operands[0] {
-                        panic!("Operands must be registers only, line {}", index);
-                    }
-                    if let Operand::Immediate(_) = &line.operands[0] {
-                        panic!("Operands must be registers only, line {}", index);
-                    }
-
-                    self.set_value_of(
-                        &line.operands[0],
-                        self.get_value_of(&line.operands[0]) + self.get_value_of(&line.operands[1])
-                    );
-                }
-                "MULR" => {
-                    if operand_count != 2 {
-                        panic!("Expected {} operands, found {} at line {}", 2, operand_count, index);
-                    }
-
-                    if let Operand::Memory(_) = &line.operands[0] {
-                        panic!("Operands must be registers only, line {}", index);
-                    }
-                    if let Operand::Immediate(_) = &line.operands[0] {
-                        panic!("Operands must be registers only, line {}", index);
-                    }
-
-                    self.set_value_of(
-                        &line.operands[0],
-                        self.get_value_of(&line.operands[0]) * self.get_value_of(&line.operands[1])
-                    );
-                }
-                "DIVR" => {
-                    if operand_count != 2 {
-                        panic!("Expected {} operands, found {} at line {}", 2, operand_count, index);
-                    }
-
-                    if let Operand::Memory(_) = &line.operands[0] {
-                        panic!("Operands must be registers only, line {}", index);
-                    }
-                    if let Operand::Immediate(_) = &line.operands[0] {
-                        panic!("Operands must be registers only, line {}", index);
-                    }
-
-                    self.set_value_of(
-                        &line.operands[0],
-                        self.get_value_of(&line.operands[0]) / self.get_value_of(&line.operands[1])
-                    );
-                }
-                "SUBR" => {
-                    if operand_count != 2 {
-                        panic!("Expected {} operands, found {} at line {}", 2, operand_count, index);
-                    }
-
-                    if let Operand::Memory(_) = &line.operands[0] {
-                        panic!("Operands must be registers only, line {}", index);
-                    }
-                    if let Operand::Immediate(_) = &line.operands[0] {
-                        panic!("Operands must be registers only, line {}", index);
-                    }
-
-                    self.set_value_of(
-                        &line.operands[0],
-                        self.get_value_of(&line.operands[0]) - self.get_value_of(&line.operands[1])
-                    );
-                }
-                "J" => {
-                    if operand_count != 1 {
-                        panic!("Expected {} operands, found {} at line {}", 1, operand_count, index);
-                    }
+                Operation::Branch(operation) => {
+                    if !operation.should_branch(&self.compare) { continue; }
 
                     if let Operand::Memory(label) = &line.operands[0] {
                         index = self.get_label_index(label);
                     }
                 }
-                "COMP" => {
-                    if operand_count != 1 {
-                        panic!("Expected {} operands, found {} at line {}", 1, operand_count, index);
-                    }
-                    if let Operand::Register(_name) = &line.operands[0] {
-                        panic!("COMP cannot be used with a register, use COMPR instead, line {}", index);
-                    }
-
-                    let operand = self.get_value_of(&line.operands[0]);
+                Operation::Compare => {
+                    let operand = self.get_value_of(&line.operands[0], None);
                     let accumulator = self.get_accumulator();
 
-                    self.compare = match accumulator {
-                        acc if acc > operand => Compare::Greater,
-                        acc if acc < operand => Compare::Less,
-                        _ => Compare::Equal,
+                    self.compare = Compare::from_values(accumulator, operand);
+                }
+                Operation::CompareRegisters => {
+                    let register1 = self.get_value_of(&line.operands[0], None);
+                    let register2 = self.get_value_of(&line.operands[1], None);
+
+                    self.compare = Compare::from_values(register1, register2);
+                }
+                Operation::Load(register) => self.set_register(register, self.get_value_of(&line.operands[0], None)),
+                Operation::Store(register) => self.set_value_of(
+                    &line.operands[0],
+                    self.get_register(register),
+                    None,
+                ),
+                Operation::LoadWithOffset(register) => {
+                    self.set_register(
+                        register,
+                        self.get_value_of(
+                            &line.operands[0],
+                            Some(self.get_value_of(&line.operands[1], None) as usize)
+                        )
+                    )
+                }
+                Operation::StoreWithOffset(register) => {
+                    self.set_value_of(
+                        &line.operands[0],
+                        self.get_register(register),
+                        Some(self.get_value_of(&line.operands[1], None) as usize)
+                    )
+                }
+                Operation::Exchange => {
+                    if let Operand::Register(reg1) = &line.operands[0] {
+                        let value = self.get_register(reg1);
+
+                        if let Operand::Register(reg2) = &line.operands[0] {
+                            self.set_register(reg1, self.get_register(reg2));
+
+                            self.set_register(reg2, value);
+                        } else {
+                            panic!("RMO works with registers only, line {}", index);
+                        }
+                    } else {
+                        panic!("RMO works with registers only, line {}", index);
                     }
                 }
-                "COMPR" => {
-                    if operand_count != 2 {
-                        panic!("Expected {} operands, found {} at line {}", 2, operand_count, index);
-                    }
-                    if let Operand::Memory(_name) = &line.operands[0] {
-                        panic!("COMPR is used with registers only, line {}", index);
-                    }
-                    if let Operand::Immediate(_name) = &line.operands[0] {
-                        panic!("COMPR is used with registers only, line {}", index);
-                    }
-
-                    let register1 = self.get_value_of(&line.operands[0]);
-                    let register2 = self.get_value_of(&line.operands[1]);
-
-                    self.compare = match register1 {
-                        reg if reg > register2 => Compare::Greater,
-                        reg if reg < register2 => Compare::Less,
-                        _ => Compare::Equal,
-                    }
-                }
-                "JEQ" => {
-                    if operand_count != 1 {
-                        panic!("Expected {} operands, found {} at line {}", 1, operand_count, index);
-                    }
-
-                    if self.compare != Compare::Equal {
-                        continue;
-                    }
-
-                    if let Operand::Memory(label) = &line.operands[0] {
-                        index = self.get_label_index(label);
-                    }
-                }
-                "JGT" => {
-                    if operand_count != 1 {
-                        panic!("Expected {} operands, found {} at line {}", 1, operand_count, index);
-                    }
-
-                    if self.compare != Compare::Greater {
-                        continue;
-                    }
-
-                    if let Operand::Memory(label) = &line.operands[0] {
-                        index = self.get_label_index(label);
-                    }
-                }
-                "JLT" => {
-                    if operand_count != 1 {
-                        panic!("Expected {} operands, found {} at line {}", 1, operand_count, index);
-                    }
-
-                    if self.compare != Compare::Less {
-                        continue;
-                    }
-
-                    if let Operand::Memory(label) = &line.operands[0] {
-                        index = self.get_label_index(label);
-                    }
-                }
-                _ => (),
+                Operation::None => {}
             }
         }
     }
@@ -477,8 +475,13 @@ impl Code {
         println!("{}", table_display);
 
         let mut table = vec![];
-        for (memory, value) in &self.memory{
-            table.push(vec![memory.cell(), value.cell().justify(Justify::Right)]);
+        for (memory, value) in &self.memory {
+            let val = match value {
+                MemoryType::Integer(v) => v.to_string(),
+                MemoryType::Array(vec, _) => vec.iter().map(|&id| id.to_string() + ",").collect(),
+            };
+
+            table.push(vec![memory.cell(), val.cell().justify(Justify::Right)]);
         }
 
         let table = table
