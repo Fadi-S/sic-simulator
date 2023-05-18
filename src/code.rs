@@ -426,11 +426,14 @@ impl Code {
                     self.set_accumulator(operation.calculate(accumulator, value));
                 }
                 Operation::ArithmeticRegisters(operation) => {
-                    let register1 = self.get_value_of(&line.operands[0], None);
-                    let register2 = self.get_value_of(&line.operands[1], None);
-
-                    if let Operand::Register(register) = &line.operands[1] {
-                        self.set_register(register, operation.calculate(register1, register2));
+                    match (&line.operands[0], &line.operands[1]) {
+                        (Operand::Register(register1), Operand::Register(register2)) =>
+                            self.set_register(register2, operation.calculate(
+                                self.get_register(register1),
+                                self.get_register(register2),
+                            ),
+                            ),
+                        _ => panic!("Cannot perform register arithmetic operation on non-register operands, line {}", index),
                     }
                 }
                 Operation::Branch(operation) => {
