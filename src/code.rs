@@ -429,8 +429,8 @@ impl Code {
                     match (&line.operands[0], &line.operands[1]) {
                         (Operand::Register(register1), Operand::Register(register2)) =>
                             self.set_register(register2, operation.calculate(
-                                self.get_register(register1),
                                 self.get_register(register2),
+                                self.get_register(register1),
                             ),
                             ),
                         _ => panic!("Cannot perform register arithmetic operation on non-register operands, line {}", index),
@@ -482,8 +482,6 @@ impl Code {
                         let value = self.get_register(reg1);
 
                         if let Operand::Register(reg2) = &line.operands[1] {
-                            self.set_register(reg1, self.get_register(reg2));
-
                             self.set_register(reg2, value);
                         } else {
                             panic!("RMO works with registers only, line {}", index);
